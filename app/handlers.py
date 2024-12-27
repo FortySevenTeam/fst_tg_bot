@@ -25,6 +25,7 @@ def get_orders(chat_id):
 # Стейт для регистрации пользователя
 class Register(StatesGroup):
     Email = State()
+    Temp = State()
     Code = State()
 
 # Стейт для добавления новой сделки в портфель
@@ -91,6 +92,20 @@ async def register_email(message: Message, state: FSMContext):
     data = await state.get_data()
     await message.answer(f'Введите код подтверждения с почты \n\n{data["Email"]}')
 
+    if "0" == "0":
+        # Формирование словаря для запроса на сервер
+        user_details = {
+            "email": data["Email"],
+            "chat_id": message.chat.id
+        }
+
+        # Запрос на сервер для добавления нового пользователя
+        response = requests.post("http://localhost:8888/api/v1/registration", json=user_details)
+        cookies = response.cookies.get_dict()
+        await state.update_data(Temp=cookies)
+    else : await message.answer("Введен неверный код подтверждения, повторите регистрацию")
+
+
 # Записывает код в стейт и выводит пользователю его учётные данные
 # TODO Реализовать валидацию вводимых данных, обработку ошибок при разных кодах ответа от сервера;
 # TODO Сначала запрос на сервер вместе с обработкой ошибок для разных кодов ответа,
@@ -99,24 +114,14 @@ async def register_email(message: Message, state: FSMContext):
 async def register_code(message: Message, state: FSMContext):
     await state.update_data(Code=message.text) # Обновление поля Code в стейте
     data = await state.get_data() # Получение всех полей из стейта
+    link = "http://localhost:8888/api/v1/registration/confirm?otp=" + data["Code"]
+    response = requests.put(link, cookies=data["Temp"], json=data)
 
-    if data["Code"] == "0":
-        await message.answer(
-            f'Ваши данные: \n{data["Email"]} \n{data["Code"]} \n\nНе забудьте сохранить!',
-            reply_markup=kb.Reg
-        )
-
-        # Формирование словаря для запроса на сервер
-        user_details = {
-            "email": data["Email"],
-            "chat_id": message.chat.id
-        }
-
-        # Запрос на сервер для добавления нового пользователя
-        requests.post("http://localhost:8082/api/v1/users", json=user_details)
-
-        await state.clear() # Очистка данных стейта
-    else : await message.answer("Введен неверный код подтверждения, повторите регистрацию")
+    if response == 200:
+        await message.answer("Регистрация пройдена успешно.", reply_markup=kb.main)
+    else:
+        await message.answer(response.text)
+    await state.clear() # Очистка данных стейта
 
 # ================================================= MENU =================================================
 
